@@ -3,6 +3,10 @@
 ## Overview
 This project integrates Copilot Studio with Azure Speech Services to provide robust capabilities for Text-to-Speech, Speech-to-Text, and Avatar functionalities.
 
+## Architecture
+
+![Architecture Diagram](images/architecture-diagram.png)
+
 ## Features
 - Real-time speech recognition and synthesis
 - Interactive avatar with customizable voices and styles
@@ -36,7 +40,7 @@ This project integrates Copilot Studio with Azure Speech Services to provide rob
 
 1. **Clone the Repository**
    ```bash
-   git clone https://your-repository-url.git
+   git clone https://github.com/nguyennhianhtri/copilot-studio-azure-avatar.git
    cd avatar
    ```
 
