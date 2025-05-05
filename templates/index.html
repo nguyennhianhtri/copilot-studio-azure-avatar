@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>Chat with Copilot Studio using Azure Avatar</title>
+  <title>Singtel MyATO</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
   <script src="https://cdn.botframework.com/botframework-webchat/latest/webchat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.0.1/dist/socket.io.min.js"></script>
@@ -24,6 +24,21 @@
       flex-direction: column;
       gap: 20px;
     }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .logo {
+      height: 40px;
+      width: auto;
+    }
+    .page-title {
+      color: #333;
+      margin: 0;
+      font-size: 24px;
+    }
     .main-content {
       display: flex;
       gap: 20px;
@@ -36,11 +51,6 @@
     .avatar-section {
       flex: 1;
       min-width: 0;
-    }
-    .page-title {
-      text-align: center;
-      color: #333;
-      margin-bottom: 20px;
     }
     .config-section {
       background-color: white;
@@ -241,19 +251,38 @@
     </div>
   </div>
   
-  <h1 class="page-title">Chat with Copilot Studio using Azure Avatar</h1>
   <div class="container">
-    <div class="main-content">
-      <div class="chat-container">
-        <div class="avatar-video-container">
-          <video id="avatarVideo" autoplay playsinline muted></video>
+    <div class="header">
+      <img src="{{ url_for('static', filename='images/Singtel_logo.svg') }}" alt="Singtel Logo" class="logo">
+      <h1 class="page-title">Singtel MyATO</h1>
+    </div>
+    <div class="phone-container">
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-status-bar">
+            <div class="status-bar-time">9:41</div>
+            <div class="status-bar-icons">
+              <span class="status-bar-signal"></span>
+              <span class="status-bar-wifi"></span>
+              <span class="status-bar-battery"></span>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="chat-container">
+              <div class="avatar-video-container">
+                <video id="avatarVideo" autoplay playsinline muted></video>
+              </div>
+              <div id="chatMessages"></div>
+              <div id="typingIndicator">Bot is typing...</div>
+              <form class="message-form">
+                <input type="text" id="messageInput" placeholder="Type your message...">
+                <button type="submit" id="sendButton">Send</button>
+              </form>
+            </div>
+          </div>
         </div>
-        <div id="chatMessages"></div>
-        <div id="typingIndicator">Bot is typing...</div>
-        <form class="message-form">
-          <input type="text" id="messageInput" placeholder="Type your message...">
-          <button type="submit" id="sendButton">Send</button>
-        </form>
+        <div class="phone-home-indicator"></div>
       </div>
     </div>
     <div class="controls">
