@@ -245,57 +245,15 @@
   <div class="container">
     <div class="main-content">
       <div class="chat-container">
+        <div class="avatar-video-container">
+          <video id="avatarVideo" autoplay playsinline muted></video>
+        </div>
         <div id="chatMessages"></div>
         <div id="typingIndicator">Bot is typing...</div>
         <form class="message-form">
           <input type="text" id="messageInput" placeholder="Type your message...">
           <button type="submit" id="sendButton">Send</button>
         </form>
-      </div>
-      <div class="avatar-section" id="avatarContainer">
-        <div class="video-container">
-          <video id="avatarVideo" autoplay playsinline muted></video>
-        </div>
-        <div class="config-section" id="avatarConfigSection">
-          <h3>Avatar Configuration</h3>
-          <label for="isCustomAvatar">
-            <input type="checkbox" id="isCustomAvatar" name="isCustomAvatar"> Custom Avatar
-          </label>
-          <div class="form-group">
-          </div>
-          <div class="form-group">
-            <label for="avatarCharacter">Character:</label>
-            <select id="avatarCharacter">
-              <option value="Harry">Harry</option>
-              <option value="Jeff">Jeff</option>
-              <option value="Lisa">Lisa</option>
-              <option value="Lori">Lori</option>
-              <option value="Max">Max</option>
-              <option value="Meg">Meg</option>
-            </select>
-            <input type="text" id="customAvatarCharacter" placeholder="Enter custom character" style="display: none; margin-top: 5px;">
-          </div>
-          <div class="form-group">
-            <label for="avatarStyle">Style:</label>
-            <select id="avatarStyle">
-              <option value="business">Business</option>
-              <option value="casual">Casual</option>
-              <option value="casual-sitting">Casual Sitting</option>
-              <option value="formal">Formal</option>
-              <option value="graceful">Graceful</option>
-              <option value="graceful-sitting">Graceful Sitting</option>
-              <option value="graceful-standing">Graceful Standing</option>
-              <option value="technical-sitting">Technical Sitting</option>
-              <option value="technical-standing">Technical Standing</option>
-              <option value="youthful">Youthful</option>
-            </select>
-            <input type="text" id="customAvatarStyle" placeholder="Enter custom style" style="display: none; margin-top: 5px;">
-          </div>
-        </div>
-        <div class="video-controls">
-          <button id="startAvatarButton">Start Avatar</button>
-          <button id="stopAvatarButton" disabled>Stop Avatar</button>
-        </div>
       </div>
     </div>
     <div class="controls">
@@ -346,6 +304,41 @@
             <label for="personalVoiceSpeakerProfileID">Personal Voice Profile ID:</label>
             <input type="text" id="personalVoiceSpeakerProfileID" placeholder="Enter personal voice profile ID">
           </div>
+        </div>
+      </div>
+    </div>
+    <div class="avatar-config-section">
+      <div class="config-section" id="avatarConfigSection">
+        <h3>Avatar Configuration</h3>
+        <label for="isCustomAvatar">
+          <input type="checkbox" id="isCustomAvatar" name="isCustomAvatar"> Custom Avatar
+        </label>
+        <div class="form-group">
+          <label for="avatarCharacter">Avatar Character:</label>
+          <select id="avatarCharacter" name="avatarCharacter">
+            <option value="Harry">Harry</option>
+            <option value="Jeff">Jeff</option>
+            <option value="Lisa">Lisa</option>
+            <option value="Lori">Lori</option>
+            <option value="Max">Max</option>
+            <option value="Meg">Meg</option>
+            <option value="custom">Custom</option>
+          </select>
+          <input type="text" id="customAvatarCharacter" name="customAvatarCharacter" placeholder="Enter custom character name" style="display: none;">
+        </div>
+        <div class="form-group">
+          <label for="avatarStyle">Avatar Style:</label>
+          <select id="avatarStyle" name="avatarStyle">
+            <option value="business">Business</option>
+            <option value="casual">Casual</option>
+            <option value="formal">Formal</option>
+            <option value="custom">Custom</option>
+          </select>
+          <input type="text" id="customAvatarStyle" name="customAvatarStyle" placeholder="Enter custom style name" style="display: none;">
+        </div>
+        <div class="video-controls">
+          <button id="startAvatarButton">Start Avatar</button>
+          <button id="stopAvatarButton" disabled>Stop Avatar</button>
         </div>
       </div>
     </div>
