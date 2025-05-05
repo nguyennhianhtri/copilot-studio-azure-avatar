@@ -252,10 +252,6 @@
   </div>
   
   <div class="container">
-    <div class="header">
-      <img src="{{ url_for('static', filename='images/Singtel_logo.svg') }}" alt="Singtel Logo" class="logo">
-      <h1 class="page-title">Singtel MyATO</h1>
-    </div>
     <div class="phone-container">
       <div class="phone-frame">
         <div class="phone-notch"></div>
@@ -268,11 +264,15 @@
               <span class="status-bar-battery"></span>
             </div>
           </div>
+          <div class="app-header">
+            <img src="{{ url_for('static', filename='images/Singtel_logo.svg') }}" alt="Singtel Logo" class="app-logo">
+            <h1 class="app-title">MyATO</h1>
+          </div>
+          <div class="avatar-video-container">
+            <video id="avatarVideo" autoplay playsinline muted></video>
+          </div>
           <div class="main-content">
             <div class="chat-container">
-              <div class="avatar-video-container">
-                <video id="avatarVideo" autoplay playsinline muted></video>
-              </div>
               <div id="chatMessages"></div>
               <div id="typingIndicator">Bot is typing...</div>
               <form class="message-form">
