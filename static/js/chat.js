@@ -116,6 +116,53 @@ async function initializeSpeechRecognition() {
     }
 }
 
+// Microphone button handling
+const micButton = document.getElementById('micButton');
+let isRecording = false;
+
+micButton.addEventListener('click', async () => {
+    if (!isRecording) {
+        try {
+            // Start recording
+            if (!await initializeSpeechConfig()) {
+                throw new Error('Failed to initialize speech configuration');
+            }
+            
+            if (!await initializeSpeechRecognition()) {
+                throw new Error('Failed to initialize speech recognition');
+            }
+            
+            await startRecognition();
+            isRecording = true;
+            micButton.classList.add('active');
+            micButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+            `;
+        } catch (error) {
+            console.error('Failed to start microphone:', error);
+            alert('Failed to start microphone. Please check your permissions.');
+        }
+    } else {
+        // Stop recording
+        stopRecognition();
+        isRecording = false;
+        micButton.classList.remove('active');
+        micButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+        `;
+    }
+});
+
 // Start speech recognition
 async function startRecognition() {
     try {
@@ -127,9 +174,6 @@ async function startRecognition() {
         
         await recognizer.startContinuousRecognitionAsync();
         isRecognizing = true;
-        document.getElementById('startMicButton').disabled = true;
-        document.getElementById('stopMicButton').disabled = false;
-        document.getElementById('recordingIndicator').style.display = 'inline';
         updateMicStatus('Listening...');
     } catch (error) {
         console.error('Error starting recognition:', error);
@@ -142,9 +186,6 @@ function stopRecognition() {
     if (recognizer && isRecognizing) {
         recognizer.stopContinuousRecognitionAsync();
         isRecognizing = false;
-        document.getElementById('startMicButton').disabled = false;
-        document.getElementById('stopMicButton').disabled = true;
-        document.getElementById('recordingIndicator').style.display = 'none';
         updateMicStatus('Microphone stopped');
     }
 }
@@ -379,13 +420,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Set up microphone controls
-    const startMicButton = document.getElementById('startMicButton');
-    const stopMicButton = document.getElementById('stopMicButton');
-    
-    startMicButton.addEventListener('click', startRecognition);
-    stopMicButton.addEventListener('click', stopRecognition);
-
     // Voice settings handlers
     const ttsVoice = document.getElementById('ttsVoice');
     const customTtsVoice = document.getElementById('customTtsVoice');
@@ -456,53 +490,6 @@ function createSpeechRecognizer() {
         }
     });
 }
-
-// Microphone button handling
-const micButton = document.getElementById('micButton');
-let isRecording = false;
-
-micButton.addEventListener('click', async () => {
-    if (!isRecording) {
-        try {
-            // Start recording using the working implementation
-            if (!await initializeSpeechConfig()) {
-                throw new Error('Failed to initialize speech configuration');
-            }
-            
-            if (!await initializeSpeechRecognition()) {
-                throw new Error('Failed to initialize speech recognition');
-            }
-            
-            await startRecognition();
-            isRecording = true;
-            micButton.classList.add('active');
-            micButton.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                    <line x1="8" y1="23" x2="16" y2="23"></line>
-                </svg>
-            `;
-        } catch (error) {
-            console.error('Failed to start microphone:', error);
-            alert('Failed to start microphone. Please check your permissions.');
-        }
-    } else {
-        // Stop recording using the working implementation
-        stopRecognition();
-        isRecording = false;
-        micButton.classList.remove('active');
-        micButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" y1="19" x2="12" y2="23"></line>
-                <line x1="8" y1="23" x2="16" y2="23"></line>
-            </svg>
-        `;
-    }
-});
 
 // Set up WebRTC connection to avatar service
 async function connectAvatarService() {

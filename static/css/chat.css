@@ -233,10 +233,43 @@ body {
 }
 
 /* Microphone controls */
-.mic-controls,
-.mic-buttons,
+.mic-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background-color: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+}
+
+.mic-controls .icon-button {
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.mic-controls .icon-button:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+.mic-controls .icon-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
 .mic-status {
-    display: none;
+    display: block;
+    margin: 10px 20px;
+    padding: 8px;
+    font-size: 14px;
+    color: #666;
+    font-style: italic;
+    min-height: 20px;
 }
 
 /* Recording indicator */
