@@ -457,83 +457,52 @@ function createSpeechRecognizer() {
     });
 }
 
-// Handle microphone button click
-window.microphone = () => {
-    if (document.getElementById('microphone').innerHTML === 'Stop Microphone') {
-        // Stop microphone
-        document.getElementById('microphone').disabled = true;
-        speechRecognizer.stopContinuousRecognitionAsync(
-            () => {
-                document.getElementById('microphone').innerHTML = 'Start Microphone';
-                document.getElementById('microphone').disabled = false;
-            }, (err) => {
-                console.log("Failed to stop continuous recognition:", err);
-                document.getElementById('microphone').disabled = false;
-            });
-        return;
+// Microphone button handling
+const micButton = document.getElementById('micButton');
+let isRecording = false;
+
+micButton.addEventListener('click', async () => {
+    if (!isRecording) {
+        try {
+            // Start recording using the working implementation
+            if (!await initializeSpeechConfig()) {
+                throw new Error('Failed to initialize speech configuration');
+            }
+            
+            if (!await initializeSpeechRecognition()) {
+                throw new Error('Failed to initialize speech recognition');
+            }
+            
+            await startRecognition();
+            isRecording = true;
+            micButton.classList.add('active');
+            micButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+            `;
+        } catch (error) {
+            console.error('Failed to start microphone:', error);
+            alert('Failed to start microphone. Please check your permissions.');
+        }
+    } else {
+        // Stop recording using the working implementation
+        stopRecognition();
+        isRecording = false;
+        micButton.classList.remove('active');
+        micButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+        `;
     }
-
-    // Start microphone
-    document.getElementById('microphone').disabled = true;
-    speechRecognizer.recognizing = async (s, e) => {
-        if (isFirstRecognizingEvent && isSpeaking) {
-            window.stopSpeaking();
-            isFirstRecognizingEvent = false;
-        }
-    };
-
-    speechRecognizer.recognized = async (s, e) => {
-        if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
-            let userQuery = e.result.text.trim();
-            if (userQuery === '') {
-                return;
-            }
-
-            let recognitionResultReceivedTime = new Date();
-            let speechFinishedOffset = (e.result.offset + e.result.duration) / 10000;
-            let sttLatency = recognitionResultReceivedTime - recognitionStartedTime - speechFinishedOffset;
-            console.log(`STT latency: ${sttLatency} ms`);
-            let latencyLogTextArea = document.getElementById('latencyLog');
-            latencyLogTextArea.innerHTML += `STT latency: ${sttLatency} ms\n`;
-            latencyLogTextArea.scrollTop = latencyLogTextArea.scrollHeight;
-
-            // Auto stop microphone when a phrase is recognized, when it's not continuous conversation mode
-            if (!document.getElementById('continuousConversation').checked) {
-                document.getElementById('microphone').disabled = true;
-                speechRecognizer.stopContinuousRecognitionAsync(
-                    () => {
-                        document.getElementById('microphone').innerHTML = 'Start Microphone';
-                        document.getElementById('microphone').disabled = false;
-                    }, (err) => {
-                        console.log("Failed to stop continuous recognition:", err);
-                        document.getElementById('microphone').disabled = false;
-                    });
-            }
-
-            let chatHistoryTextArea = document.getElementById('chatHistory');
-            if (chatHistoryTextArea.innerHTML !== '' && !chatHistoryTextArea.innerHTML.endsWith('\n\n')) {
-                chatHistoryTextArea.innerHTML += '\n\n';
-            }
-
-            chatHistoryTextArea.innerHTML += "User: " + userQuery + '\n\n';
-            chatHistoryTextArea.scrollTop = chatHistoryTextArea.scrollHeight;
-
-            handleUserQuery(userQuery);
-
-            isFirstRecognizingEvent = true;
-        }
-    };
-
-    recognitionStartedTime = new Date();
-    speechRecognizer.startContinuousRecognitionAsync(
-        () => {
-            document.getElementById('microphone').innerHTML = 'Stop Microphone';
-            document.getElementById('microphone').disabled = false;
-        }, (err) => {
-            console.log("Failed to start continuous recognition:", err);
-            document.getElementById('microphone').disabled = false;
-        });
-};
+});
 
 // Set up WebRTC connection to avatar service
 async function connectAvatarService() {

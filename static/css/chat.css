@@ -134,6 +134,35 @@ body {
     box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
 }
 
+.icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.icon-button:hover {
+    background-color: #e9ecef;
+    color: #007bff;
+}
+
+.icon-button.active {
+    background-color: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+.icon-button svg {
+    width: 20px;
+    height: 20px;
+}
+
 #sendButton {
     padding: 12px 24px;
     background-color: #007bff;
@@ -204,28 +233,24 @@ body {
 }
 
 /* Microphone controls */
-.mic-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.mic-buttons {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
+.mic-controls,
+.mic-buttons,
 .mic-status {
-    font-style: italic;
-    color: #666;
-    margin-bottom: 10px;
+    display: none;
 }
 
+/* Recording indicator */
 .recording-indicator {
     display: none;
     color: #dc3545;
-    font-weight: 500;
+    margin-left: 10px;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
 }
 
 /* Voice settings */
@@ -402,20 +427,6 @@ body {
     .controls {
         grid-template-columns: 1fr;
     }
-}
-
-/* Recording indicator */
-.recording-indicator {
-    display: none;
-    color: red;
-    margin-left: 10px;
-    animation: blink 1s infinite;
-}
-
-@keyframes blink {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
 }
 
 /* Phone frame styles */

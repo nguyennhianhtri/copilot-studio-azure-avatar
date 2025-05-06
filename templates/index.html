@@ -208,6 +208,71 @@
     .cancel-button:hover {
       background-color: #5a6268;
     }
+
+    .phone-container {
+      position: relative;
+      width: 100%;
+      max-width: 375px;
+      margin: 0 auto;
+      transition: all 0.3s ease;
+    }
+
+    .phone-container.fullscreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      z-index: 9999;
+      background: white;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .phone-container.fullscreen .fullscreen-button {
+      top: 20px;
+      right: 20px;
+      background-color: #dc3545;
+    }
+
+    .fullscreen-button {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      padding: 8px 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 10000;
+      transition: all 0.2s ease;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .fullscreen-button:hover {
+      background-color: #0056b3;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+    }
+
+    .fullscreen-button.exit {
+      background-color: #dc3545;
+    }
+
+    .fullscreen-button.exit:hover {
+      background-color: #c82333;
+    }
+
+    .fullscreen-button svg {
+      width: 16px;
+      height: 16px;
+    }
   </style>
 </head>
 <body>
@@ -253,6 +318,12 @@
   
   <div class="container">
     <div class="phone-container">
+      <button class="fullscreen-button" id="fullscreenButton">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+        </svg>
+        Enter Fullscreen
+      </button>
       <div class="phone-frame">
         <div class="phone-notch"></div>
         <div class="phone-screen">
@@ -277,6 +348,14 @@
               <div id="typingIndicator">Bot is typing...</div>
               <form class="message-form">
                 <input type="text" id="messageInput" placeholder="Type your message...">
+                <button type="button" id="micButton" class="icon-button">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                </button>
                 <button type="submit" id="sendButton">Send</button>
               </form>
             </div>
@@ -286,17 +365,6 @@
       </div>
     </div>
     <div class="controls">
-      <div class="control-section">
-        <h3>Microphone Controls</h3>
-        <div class="mic-controls">
-          <div class="mic-status" id="micStatus">Microphone status: Ready</div>
-          <div class="mic-buttons">
-            <button id="startMicButton">Start Microphone</button>
-            <button id="stopMicButton" disabled>Stop Microphone</button>
-            <span id="recordingIndicator" class="recording-indicator">● Recording</span>
-          </div>
-        </div>
-      </div>
       <div class="control-section">
         <h3>Voice Settings</h3>
         <div class="voice-settings">
@@ -562,6 +630,30 @@
           console.error('Error saving environment variables:', error);
           alert('Failed to save environment variables');
         });
+      });
+
+      const fullscreenButton = document.getElementById('fullscreenButton');
+      const phoneContainer = document.querySelector('.phone-container');
+      
+      fullscreenButton.addEventListener('click', function() {
+        phoneContainer.classList.toggle('fullscreen');
+        if (phoneContainer.classList.contains('fullscreen')) {
+          fullscreenButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+            </svg>
+            Exit Fullscreen
+          `;
+          fullscreenButton.classList.add('exit');
+        } else {
+          fullscreenButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+            Enter Fullscreen
+          `;
+          fullscreenButton.classList.remove('exit');
+        }
       });
     });
   </script>
