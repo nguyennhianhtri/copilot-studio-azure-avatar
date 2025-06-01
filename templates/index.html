@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>Chat with Copilot Studio using Azure Avatar</title>
+  <title>Chat with Copilot Studio using Azure TTS Avatar</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
   <script src="https://cdn.botframework.com/botframework-webchat/latest/webchat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.0.1/dist/socket.io.min.js"></script>
@@ -83,6 +83,15 @@
     }
     .video-controls button:hover:not(:disabled) {
       background-color: #0056b3;
+    }
+    .mic-controls button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.2s;
     }
     @media (max-width: 768px) {
       .main-content {
@@ -241,7 +250,7 @@
     </div>
   </div>
   
-  <h1 class="page-title">Chat with Copilot Studio using Azure Avatar</h1>
+  <h1 class="page-title">Chat with Copilot Studio using Azure TTS Avatar</h1>
   <div class="container">
     <div class="main-content">
       <div class="chat-container">
