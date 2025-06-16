@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
   <script src="https://cdn.botframework.com/botframework-webchat/latest/webchat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.0.1/dist/socket.io.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.25.1/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@latest/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
   <style>
     /* Only keep styles that are specific to this page and not related to chat */
     body {
@@ -210,6 +210,9 @@
   </style>
 </head>
 <body>
+  <!-- Hidden client ID for avatar service -->
+  <input type="hidden" id="clientId" value="{{ session.get('client_id', 'client_' + session.get('_csrf_token', 'default')) }}">
+  
   <button class="config-button" id="configButton">Configure Environment</button>
   
   <div id="envModal" class="modal">
@@ -263,7 +266,17 @@
       </div>
       <div class="avatar-section" id="avatarContainer">
         <div class="video-container">
-          <video id="avatarVideo" autoplay playsinline muted></video>
+          <!-- Container for avatar video and audio elements (matching Azure sample) -->
+          <div id="remoteVideo">
+            <!-- Video and audio elements will be dynamically added here by the avatar service -->
+          </div>
+          <!-- Fallback video element for custom implementations -->
+          <video id="avatarVideo" autoplay playsinline muted style="display: none;"></video>
+          
+          <!-- Add elements expected by Azure sample -->
+          <div id="chatHistory" hidden style="background: white; border: 1px solid #ccc; padding: 10px; margin: 10px 0; height: 200px; overflow-y: scroll;"></div>
+          <button id="microphone" disabled style="margin: 5px;">Start Microphone</button>
+          <button id="stopSession" disabled style="margin: 5px;">Stop Session</button>
         </div>
         <div class="config-section" id="avatarConfigSection">
           <h3>Avatar Configuration</h3>

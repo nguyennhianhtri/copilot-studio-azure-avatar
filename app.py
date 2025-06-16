@@ -210,6 +210,18 @@ def send_message(conversation_id, message, token):
         logger.error(f"Error sending message: {str(e)}")
         return None
 
+def log_all_activities(activities, user_message_id):
+    """Debug function to log all activities and help understand the new response format"""
+    logger.debug(f"=== All Activities for message {user_message_id} ===")
+    for i, activity in enumerate(activities):
+        logger.debug(f"Activity {i}: type={activity.get('type')}, "
+                    f"from_role={activity.get('from', {}).get('role')}, "
+                    f"from_name={activity.get('from', {}).get('name')}, "
+                    f"replyToId={activity.get('replyToId')}, "
+                    f"text={activity.get('text', 'N/A')[:50]}..., "
+                    f"valueType={activity.get('valueType')}")
+    logger.debug("=== End Activities ===")
+
 def get_bot_response(conversation_id, token, user_message_id):
     """Get bot's response for a specific user message."""
     if not conversation_id or not token:
@@ -231,6 +243,9 @@ def get_bot_response(conversation_id, token, user_message_id):
             activities = data.get('activities', [])
             logger.debug(f"Found {len(activities)} total activities")
             
+            # Log all activities for debugging
+            log_all_activities(activities, user_message_id)
+
             # Find the user's message
             user_message = next(
                 (activity for activity in activities if activity.get('id') == user_message_id),
@@ -242,43 +257,97 @@ def get_bot_response(conversation_id, token, user_message_id):
                 return None
                 
             # Find the bot's response that replies to this message
+            # First check for traditional text messages, then for event messages
             bot_response = next(
                 (activity for activity in activities 
                  if activity.get('replyToId') == user_message_id and
-                 (activity.get('from', {}).get('role') == 'bot' or 
-                  activity.get('from', {}).get('id') == 'bot' or
-                  activity.get('from', {}).get('name') == 'Bot')),
+                 activity.get('from', {}).get('role') == 'bot' and
+                 activity.get('type') == 'message' and
+                 activity.get('text')),  # Only get messages with actual text
                 None
             )
             
+            # If no text message found, check for other bot activities that might contain content
+            if not bot_response:
+                # Look for any bot activity that replies to our message
+                bot_activities = [
+                    activity for activity in activities 
+                    if activity.get('replyToId') == user_message_id and
+                    activity.get('from', {}).get('role') == 'bot'
+                ]
+                
+                # Log all bot activities for debugging
+                for activity in bot_activities:
+                    logger.debug(f"Bot activity found: type={activity.get('type')}, text={activity.get('text', 'N/A')}, valueType={activity.get('valueType', 'N/A')}")
+                
+                # Try to find a message with text content
+                bot_response = next(
+                    (activity for activity in bot_activities 
+                     if activity.get('type') == 'message' and activity.get('text')),
+                    None
+                )
+                
+                # If still no response, wait longer for plan execution to complete
+                if not bot_response:
+                    logger.debug("No immediate bot response found, waiting for plan execution...")
+                    time.sleep(5)  # Wait longer for new plan-based responses
+                    
+                    # Try again with fresh data
+                    response = requests.get(url, headers=headers)
+                    if response.status_code == 200:
+                        data = response.json()
+                        activities = data.get('activities', [])
+                        logger.debug(f"After waiting, found {len(activities)} total activities")
+                        
+                        # Look for bot responses again
+                        bot_response = next(
+                            (activity for activity in activities 
+                             if activity.get('replyToId') == user_message_id and
+                             activity.get('from', {}).get('role') == 'bot' and
+                             activity.get('type') == 'message' and
+                             activity.get('text')),
+                            None
+                        )
+            
             if bot_response:
                 logger.debug(f"Found bot response: {bot_response}")
+                response_text = bot_response.get('text', 'No response')
+                if not response_text or response_text.strip() == '':
+                    response_text = 'I received your message but have no text response.'
                 return {
-                    'text': bot_response.get('text', 'No response'),
+                    'text': response_text,
                     'watermark': str(len(activities))
                 }
             else:
                 logger.debug("No bot response found for this message")
-                # If no response found, wait a bit and try again
-                time.sleep(2)
-                # Try one more time with a small delay
+                # If still no response found, wait a bit and try one final time
+                time.sleep(3)
                 response = requests.get(url, headers=headers)
                 if response.status_code == 200:
                     data = response.json()
                     activities = data.get('activities', [])
+                    logger.debug(f"Final attempt: found {len(activities)} total activities")
+                    
                     bot_response = next(
                         (activity for activity in activities 
                          if activity.get('replyToId') == user_message_id and
-                         (activity.get('from', {}).get('role') == 'bot' or 
-                          activity.get('from', {}).get('id') == 'bot' or
-                          activity.get('from', {}).get('name') == 'Bot')),
+                         activity.get('from', {}).get('role') == 'bot' and
+                         activity.get('type') == 'message'),
                         None
                     )
                     if bot_response:
+                        response_text = bot_response.get('text', 'Response received without text content')
                         return {
-                            'text': bot_response.get('text', 'No response'),
+                            'text': response_text,
                             'watermark': str(len(activities))
                         }
+                        
+                # As a last resort, return a default response indicating the bot processed the message
+                logger.warning("Bot activity detected but no text response found")
+                return {
+                    'text': 'I received your message and am processing it, but no text response was generated.',
+                    'watermark': str(len(activities) if 'activities' in locals() else session.get('watermark', '0'))
+                }
                 
         logger.error(f"Failed to get bot response: {response.text}")
         return None
@@ -288,6 +357,11 @@ def get_bot_response(conversation_id, token, user_message_id):
 
 @app.route('/')
 def home():
+    # Generate client ID if not in session
+    if 'client_id' not in session:
+        session['client_id'] = f"client_{uuid.uuid4()}"
+        logger.debug(f"Generated new client ID: {session['client_id']}")
+    
     # Check if required environment variables are set
     required_vars = ['DIRECT_LINE_SECRET', 'SPEECH_REGION', 'SPEECH_KEY']
     missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -382,6 +456,7 @@ def chat():
     return jsonify({'error': 'No response from bot after retries'}), 500
 
 @app.route("/api/getSpeechToken", methods=["GET"])
+@csrf.exempt  # Exempt this endpoint from CSRF protection
 def get_speech_token():
     """Return the speech token and region"""
     global speech_token
@@ -448,9 +523,10 @@ speech_synthesizers = {}
 
 # The API route to connect to the avatar service
 @app.route("/api/connectAvatar", methods=["POST"])
+@csrf.exempt  # Exempt this endpoint from CSRF protection
 def connect_avatar():
     """Connect to the avatar service"""
-    global ice_token, connections, id_to_connection
+    global ice_token, avatar_connections, speech_synthesizers
     try:
         # Log raw request data for debugging
         logger.debug(f"Request Content-Type: {request.headers.get('Content-Type')}")
@@ -467,23 +543,14 @@ def connect_avatar():
             logger.debug(f"ICE token content (first 50 chars): {ice_token[:50]}")
         
         # Get avatar params from headers
+        client_id = request.headers.get('ClientId', session.get('client_id', 'default_client'))
         voice_name = request.headers.get('TtsVoice', "en-US-JennyNeural")
         style = request.headers.get('AvatarStyle', "casual-sitting")
         avatar_character = request.headers.get('AvatarCharacter', 'lisa')
         is_custom = request.headers.get('IsCustomAvatar', 'false').lower() == 'true'
-        logger.debug(f"Avatar params - Voice: {voice_name}, Style: {style}, Character: {avatar_character}, IsCustom: {is_custom}")
+        logger.debug(f"Avatar params - ClientId: {client_id}, Voice: {voice_name}, Style: {style}, Character: {avatar_character}, IsCustom: {is_custom}")
         
-        connection_id = f"connection_{uuid.uuid4()}"
-        
-        # Define connection collections if not already defined
-        if 'connections' not in globals():
-            global connections
-            connections = {}
-        if 'id_to_connection' not in globals():
-            global id_to_connection
-            id_to_connection = {}
-            
-        id_to_connection[connection_id] = {}
+        connection_id = client_id  # Use client_id as the connection identifier
         
         # Wait for the global ice_token to be available if needed
         retry_count = 0
@@ -556,9 +623,9 @@ def connect_avatar():
         logger.debug("Setting avatar configuration")
         connection.set_message_property('speech.config', 'context', json.dumps(avatar_config))
         
-        # Store connection and synthesizer in dictionaries
-        avatar_connections[connection_id] = connection
-        speech_synthesizers[connection_id] = speech_synthesizer
+        # Store connection and synthesizer in dictionaries using client_id
+        avatar_connections[client_id] = connection
+        speech_synthesizers[client_id] = speech_synthesizer
         
         # Initialize the connection with an empty speak
         logger.debug("Initializing the connection with an empty speak")
@@ -646,10 +713,8 @@ def connect_avatar():
             logger.error(f"Turn start message: {turn_start_message if 'turn_start_message' in locals() else 'Not available'}")
             return Response(f"Error getting remote SDP: {str(e)}", status=500)
         
-        # Store connection ID in session
-        session['avatar_connection_id'] = connection_id
-        session['avatar_connected'] = True
-        logger.debug(f"Connection stored in session with ID: {connection_id}")
+        # Connection is now tracked by client_id instead of session
+        logger.debug(f"Avatar connection established for client ID: {client_id}")
         
         # Return the remote SDP
         logger.debug("Returning remote SDP to client")
@@ -661,30 +726,32 @@ def connect_avatar():
 
 # The API route to speak through the avatar
 @app.route("/api/speak", methods=["POST"])
+@csrf.exempt  # Exempt this endpoint from CSRF protection
 def speak():
     """Speak through the avatar"""
-    if 'avatar_connection_id' not in session or not session.get('avatar_connected'):
-        return Response("No active avatar connection", status=400)
-    
     try:
-        # Get the connection ID from the session
-        connection_id = session['avatar_connection_id']
+        # Get client ID from headers
+        client_id = request.headers.get('ClientId', session.get('client_id', 'default_client'))
         
-        # Get the speech synthesizer from the dictionary
-        speech_synthesizer = speech_synthesizers.get(connection_id)
+        # Get the speech synthesizer from the dictionary using client_id
+        speech_synthesizer = speech_synthesizers.get(client_id)
         if not speech_synthesizer:
+            logger.error(f"Speech synthesizer not found for client ID: {client_id}")
             return Response("Speech synthesizer not found", status=400)
         
         # Get the SSML to speak
         ssml = request.data.decode('utf-8')
+        logger.debug(f"Speaking SSML for client {client_id}: {ssml[:100]}...")
         
         # Speak the SSML
         result = speech_synthesizer.speak_ssml_async(ssml).get()
         
         if result.reason == speechsdk.ResultReason.Canceled:
             cancellation_details = result.cancellation_details
+            logger.error(f"Speech synthesis canceled for client {client_id}: {cancellation_details.error_details}")
             return Response(f"Error speaking: {cancellation_details.error_details}", status=400)
         
+        logger.debug(f"Speech successful for client {client_id}, result ID: {result.result_id}")
         return Response(result.result_id, status=200)
         
     except Exception as e:
@@ -693,23 +760,24 @@ def speak():
 
 # The API route to stop speaking
 @app.route("/api/stopSpeaking", methods=["POST"])
+@csrf.exempt  # Exempt this endpoint from CSRF protection
 def stop_speaking():
     """Stop the avatar from speaking"""
-    if 'avatar_connection_id' not in session or not session.get('avatar_connected'):
-        return Response("No active avatar connection", status=400)
-    
     try:
-        # Get the connection ID from the session
-        connection_id = session['avatar_connection_id']
+        # Get client ID from headers
+        client_id = request.headers.get('ClientId', session.get('client_id', 'default_client'))
         
-        # Get the connection from the dictionary
-        connection = avatar_connections.get(connection_id)
+        # Get the connection from the dictionary using client_id
+        connection = avatar_connections.get(client_id)
         if not connection:
+            logger.error(f"Avatar connection not found for client ID: {client_id}")
             return Response("Avatar connection not found", status=400)
         
         # Send stop message
+        logger.debug(f"Stopping speech for client {client_id}")
         connection.send_message_async('synthesis.control', '{"action":"stop"}').get()
         
+        logger.debug(f"Speech stopped successfully for client {client_id}")
         return Response("Speaking stopped", status=200)
         
     except Exception as e:
@@ -718,28 +786,29 @@ def stop_speaking():
 
 # The API route to disconnect from the avatar service
 @app.route("/api/disconnectAvatar", methods=["POST"])
+@csrf.exempt  # Exempt this endpoint from CSRF protection
 def disconnect_avatar():
     """Disconnect from the avatar service"""
-    if 'avatar_connection_id' not in session or not session.get('avatar_connected'):
-        return Response("No active avatar connection", status=400)
-    
     try:
-        # Get the connection ID from the session
-        connection_id = session['avatar_connection_id']
+        # Get client ID from headers
+        client_id = request.headers.get('ClientId', session.get('client_id', 'default_client'))
         
-        # Get the connection from the dictionary
-        connection = avatar_connections.get(connection_id)
+        # Get the connection from the dictionary using client_id
+        connection = avatar_connections.get(client_id)
         if connection:
+            logger.debug(f"Closing avatar connection for client {client_id}")
             connection.close()
             
         # Remove the connection and synthesizer from dictionaries
-        if connection_id in avatar_connections:
-            del avatar_connections[connection_id]
-        if connection_id in speech_synthesizers:
-            del speech_synthesizers[connection_id]
+        if client_id in avatar_connections:
+            del avatar_connections[client_id]
+            logger.debug(f"Removed avatar connection for client {client_id}")
+        if client_id in speech_synthesizers:
+            del speech_synthesizers[client_id]
+            logger.debug(f"Removed speech synthesizer for client {client_id}")
         
-        # Update session
-        session['avatar_connected'] = False
+        logger.debug(f"Avatar disconnected successfully for client {client_id}")
+        return Response("Disconnected", status=200)
         
         return Response("Avatar disconnected", status=200)
         

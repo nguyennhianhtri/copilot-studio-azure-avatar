@@ -17,6 +17,11 @@ let chatResponseReceivedTime;
 let lastSpeakTime;
 let isFirstRecognizingEvent = true;
 
+// Variables for the new Speech SDK approach
+let clientId;
+let lastInteractionTime = new Date();
+let userClosedSession = false;
+
 // Update microphone status
 function updateMicStatus(message, isError = false) {
     const statusElement = document.getElementById('micStatus');
@@ -24,6 +29,24 @@ function updateMicStatus(message, isError = false) {
     statusElement.style.color = isError ? 'red' : '#666';
     console.log(`Microphone Status: ${message}`);
 }
+
+// Initialize client ID and fetch ICE token
+function initializeClientId() {
+    clientId = document.getElementById('clientId')?.value;
+    if (!clientId) {
+        clientId = `client_${Math.random().toString(36).substr(2, 9)}`;
+        console.warn('Client ID not found in DOM, generated:', clientId);
+    } else {
+        console.log('Client ID initialized:', clientId);
+    }
+}
+
+// Initialize everything when page loads
+window.onload = () => {
+    initializeClientId();
+    // Initialize speech configuration when page loads
+    initializeSpeechConfig();
+};
 
 // Initialize speech configuration
 async function initializeSpeechConfig() {
@@ -151,8 +174,8 @@ function stopRecognition() {
 
 // Speak text with avatar
 async function speakWithAvatar(text) {
-    if (!sessionActive) {
-        console.warn('Avatar session not active. Cannot speak.');
+    if (!sessionActive || !avatarSynthesizer) {
+        console.warn('Avatar session not active or synthesizer not available. Cannot speak.');
         return;
     }
 
@@ -162,80 +185,75 @@ async function speakWithAvatar(text) {
     }
 
     try {
-        // Get voice settings from UI
-        let ttsVoice;
-        if (document.getElementById('isCustomVoice').checked) {
-            ttsVoice = document.getElementById('customTtsVoice').value.trim();
-            if (!ttsVoice) {
-                throw new Error('Custom voice name cannot be empty');
-            }
-        } else {
-            ttsVoice = document.getElementById('ttsVoice').value;
-        }
-        const customVoiceEndpointId = document.getElementById('customVoiceEndpointId').value || '';
-        const personalVoiceSpeakerProfileID = document.getElementById('personalVoiceSpeakerProfileID').value || '';
-
-        // Create SSML for speech
-        const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='en-US'>
-            <voice name='${ttsVoice}'>
-                <mstts:ttsembedding speakerProfileId='${personalVoiceSpeakerProfileID}'>
-                    <mstts:leadingsilence-exact value='0'/>
-                    ${text}
-                </mstts:ttsembedding>
-            </voice>
-        </speak>`;
-
-        // Get CSRF token
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        
-        // Send SSML to the server to speak through the avatar
-        const response = await fetch('/api/speak', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/xml',
-                'X-CSRFToken': csrfToken
-            },
-            body: ssml
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to speak text: ${response.statusText}`);
-        }
-
+        console.log('Avatar speaking:', text);
         isSpeaking = true;
         document.getElementById('stopAvatarButton').disabled = false;
-        console.log('Avatar speaking:', text);
+
+        // Unmute audio before speaking (required for autoplay)
+        const audioElement = document.getElementById('avatarAudio');
+        if (audioElement) {
+            audioElement.muted = false;
+        }
+
+        // Use Speech SDK avatar synthesizer to speak
+        const result = await new Promise((resolve, reject) => {
+            avatarSynthesizer.speakTextAsync(text).then(
+                (result) => {
+                    if (result.reason === window.SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+                        console.log("Speech and avatar synthesized to video stream.");
+                        resolve(result);
+                    } else {
+                        console.log("Unable to speak. Result ID: " + result.resultId);
+                        if (result.reason === window.SpeechSDK.ResultReason.Canceled) {
+                            let cancellationDetails = window.SpeechSDK.CancellationDetails.fromResult(result);
+                            console.log("Cancellation reason:", cancellationDetails.reason);
+                            if (cancellationDetails.reason === window.SpeechSDK.CancellationReason.Error) {
+                                console.log("Error details:", cancellationDetails.errorDetails);
+                                reject(new Error(cancellationDetails.errorDetails));
+                            }
+                        }
+                        reject(new Error(`Speech synthesis failed: ${result.reason}`));
+                    }
+                }
+            ).catch((error) => {
+                console.error("Speech synthesis error:", error);
+                reject(error);
+            });
+        });
+
+        isSpeaking = false;
+        document.getElementById('stopAvatarButton').disabled = true;
 
     } catch (error) {
         console.error('Error in speakWithAvatar:', error);
+        isSpeaking = false;
+        document.getElementById('stopAvatarButton').disabled = true;
     }
 }
 
 // Stop the avatar from speaking
 function stopAvatarSpeaking() {
-    if (!isSpeaking) return;
+    if (!isSpeaking || !avatarSynthesizer) return;
     
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    
-    fetch('/api/stopSpeaking', {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': csrfToken
-        }
-    })
-    .then(response => {
-        if (response.ok) {
+    try {
+        console.log('Stopping avatar speaking...');
+        
+        // Use Speech SDK to stop speaking
+        avatarSynthesizer.stopSpeakingAsync().then(() => {
             console.log('Successfully stopped avatar speaking');
-        } else {
-            console.error('Failed to stop avatar speaking:', response.statusText);
-        }
-    })
-    .catch(error => {
-        console.error('Error stopping avatar speaking:', error);
-    });
-
-    isSpeaking = false;
-    document.getElementById('stopAvatarButton').disabled = true;
+            isSpeaking = false;
+            document.getElementById('stopAvatarButton').disabled = true;
+        }).catch((error) => {
+            console.error('Error stopping avatar speaking:', error);
+            isSpeaking = false;
+            document.getElementById('stopAvatarButton').disabled = true;
+        });
+        
+    } catch (error) {
+        console.error('Error in stopAvatarSpeaking:', error);
+        isSpeaking = false;
+        document.getElementById('stopAvatarButton').disabled = true;
+    }
 }
 
 // Update the handleChatMessage function to use the avatar for speech
@@ -405,28 +423,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Connect to avatar service
-function connectAvatar() {
-    document.getElementById('startSession').disabled = true;
-
-    fetch('/api/getIceToken', {
-        method: 'GET',
-    })
-    .then(response => {
-        if (response.ok) {
-            response.json().then(data => {
-                const iceServerUrl = data.Urls[0];
-                const iceServerUsername = data.Username;
-                const iceServerCredential = data.Password;
-                setupWebRTC(iceServerUrl, iceServerUsername, iceServerCredential);
-            });
-        } else {
-            throw new Error(`Failed fetching ICE token: ${response.status} ${response.statusText}`);
-        }
-    });
-
-    document.getElementById('configuration').hidden = true;
-}
-
 // Create speech recognizer
 function createSpeechRecognizer() {
     fetch('/api/getSpeechToken', {
@@ -477,7 +473,7 @@ window.microphone = () => {
     document.getElementById('microphone').disabled = true;
     speechRecognizer.recognizing = async (s, e) => {
         if (isFirstRecognizingEvent && isSpeaking) {
-            window.stopSpeaking();
+            stopAvatarSpeaking();
             isFirstRecognizingEvent = false;
         }
     };
@@ -518,7 +514,7 @@ window.microphone = () => {
             chatHistoryTextArea.innerHTML += "User: " + userQuery + '\n\n';
             chatHistoryTextArea.scrollTop = chatHistoryTextArea.scrollHeight;
 
-            handleUserQuery(userQuery);
+            handleChatMessage(userQuery);
 
             isFirstRecognizingEvent = true;
         }
@@ -535,268 +531,281 @@ window.microphone = () => {
         });
 };
 
-// Set up WebRTC connection to avatar service
-async function connectAvatarService() {
-    try {
-        // Get CSRF token
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        
-        // Get avatar configuration from UI
-        const isCustom = document.getElementById('isCustomAvatar').checked;
-        let avatarCharacter, avatarStyle;
-        
-        if (isCustom) {
-            avatarCharacter = document.getElementById('customAvatarCharacter').value;
-            avatarStyle = document.getElementById('customAvatarStyle').value;
-        } else {
-            avatarCharacter = document.getElementById('avatarCharacter').value;
-            if (avatarCharacter === 'custom') {
-                avatarCharacter = document.getElementById('customAvatarCharacter').value;
-            }
-            
-            avatarStyle = document.getElementById('avatarStyle').value;
-            if (avatarStyle === 'custom') {
-                avatarStyle = document.getElementById('customAvatarStyle').value;
-            }
-        }
+// Global variables for peer connection management (matching Azure sample)
+let iceServerUrl, iceServerUsername, iceServerCredential;
+let peerConnectionQueue = [];
+let speechSynthesizerConnected = false;
+let isReconnecting = false;
 
-        const ttsVoice = document.getElementById('ttsVoice').value;
-        const customVoiceEndpointId = document.getElementById('customVoiceEndpointId').value;
-        const personalVoiceSpeakerProfileID = document.getElementById('personalVoiceSpeakerProfileID').value;
-
-        console.log("Connecting to avatar service with parameters:", {
-            isCustom,
-            avatarCharacter,
-            avatarStyle,
-            ttsVoice
-        });
-
-        // Get ICE token from server
-        const iceTokenResponse = await fetch('/api/getIceToken', {
-            method: 'GET',
-            headers: {
-                'X-CSRFToken': csrfToken
-            }
-        });
-
-        if (!iceTokenResponse.ok) {
-            throw new Error(`Failed to get ICE token: ${iceTokenResponse.status} ${iceTokenResponse.statusText}`);
-        }
-
-        const iceTokenText = await iceTokenResponse.text();
-        let iceToken;
-        try {
-            iceToken = JSON.parse(iceTokenText);
-        } catch (e) {
-            console.error('Failed to parse ICE token:', e);
-            throw new Error('Invalid ICE token format received from server');
-        }
-        
-        console.log('ICE token retrieved successfully');
-
-        // Create WebRTC peer connection
-        peerConnection = new RTCPeerConnection({
-            iceServers: [{
-                urls: [ iceToken.Urls[0] ],
-                username: iceToken.Username,
-                credential: iceToken.Password
-            }],
-            iceTransportPolicy: 'relay'
-        });
-
-        // Handle incoming video and audio streams
-        peerConnection.ontrack = function(event) {
-            if (event.track.kind === 'video') {
-                const videoElement = document.getElementById('avatarVideo');
-                videoElement.srcObject = event.streams[0];
-                
-                videoElement.onplaying = () => {
-                    console.log('Avatar video started playing');
-                    document.getElementById('startAvatarButton').disabled = true;
-                    document.getElementById('stopAvatarButton').disabled = false;
-                    sessionActive = true;
-                };
-            }
-
-            if (event.track.kind === 'audio') {
-                const audioElement = document.createElement('audio');
-                audioElement.id = 'avatarAudio';
-                audioElement.srcObject = event.streams[0];
-                audioElement.autoplay = true;
-                
-                // Append to document body but hide it
-                audioElement.style.display = 'none';
-                document.body.appendChild(audioElement);
-                
-                audioElement.onplaying = () => {
-                    console.log('Avatar audio started playing');
-                };
-            }
-        };
-
-        // Listen for data channel events
-        peerConnection.addEventListener("datachannel", event => {
-            const dataChannel = event.channel;
-            dataChannel.onmessage = e => {
-                console.log('WebRTC event received:', e.data);
-                
-                if (e.data.includes("EVENT_TYPE_SWITCH_TO_SPEAKING")) {
-                    isSpeaking = true;
-                    document.getElementById('stopAvatarButton').disabled = false;
-                } else if (e.data.includes("EVENT_TYPE_SWITCH_TO_IDLE")) {
-                    isSpeaking = false;
-                    document.getElementById('stopAvatarButton').disabled = true;
-                }
-            };
-        });
-
-        // Create a data channel (workaround to make sure the data channel listening is working)
-        peerConnection.createDataChannel("eventChannel");
-
-        // Update UI when connection state changes
-        peerConnection.oniceconnectionstatechange = e => {
-            console.log("WebRTC connection state:", peerConnection.iceConnectionState);
-            if (peerConnection.iceConnectionState === 'disconnected' || 
-                peerConnection.iceConnectionState === 'failed') {
-                sessionActive = false;
-                document.getElementById('startAvatarButton').disabled = false;
-                document.getElementById('stopAvatarButton').disabled = true;
-            }
-        };
-
-        // Add transceivers for audio and video
-        peerConnection.addTransceiver('video', { direction: 'sendrecv' });
-        peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-
-        // Create offer and set local description
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-
-        // Wait for ICE gathering to complete
-        let iceGatheringComplete = false;
-        const iceGatheringCompletePromise = new Promise(resolve => {
-            setTimeout(() => {
-                if (!iceGatheringComplete) {
-                    iceGatheringComplete = true;
-                    resolve();
-                }
-            }, 2000);
-            
-            peerConnection.onicecandidate = e => {
-                if (!e.candidate && !iceGatheringComplete) {
-                    iceGatheringComplete = true;
-                    resolve();
-                }
-            };
-        });
-
-        await iceGatheringCompletePromise;
-
-        // Connect to avatar service with local SDP
-        const localSdp = btoa(JSON.stringify(peerConnection.localDescription));
-        
-        // Log SDP for debugging
-        console.log("Local SDP (first 100 chars):", localSdp.substring(0, 100) + "...");
-        
-        // Connect to avatar service
-        try {
-            const connectResponse = await fetch('/api/connectAvatar', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrfToken,
-                    'AvatarCharacter': avatarCharacter,
-                    'AvatarStyle': avatarStyle,
-                    'TtsVoice': ttsVoice,
-                    'CustomVoiceEndpointId': customVoiceEndpointId,
-                    'PersonalVoiceSpeakerProfileId': personalVoiceSpeakerProfileID,
-                    'IsCustomAvatar': isCustom.toString()
-                },
-                body: localSdp
+// Fetch ICE token from the server (matching Azure sample exactly)
+function fetchIceToken() {
+    fetch('/api/getIceToken', {
+        method: 'GET',
+    }).then(response => {
+        if (response.ok) {
+            response.json().then(data => {
+                iceServerUrl = data.Urls[0];
+                iceServerUsername = data.Username;
+                iceServerCredential = data.Password;
+                console.log(`[${new Date().toISOString()}] ICE token fetched.`);
+                preparePeerConnection();
             });
-
-            // Detailed error handling
-            if (!connectResponse.ok) {
-                const errorText = await connectResponse.text();
-                console.error('Avatar connection error response:', errorText);
-                console.error('Response status:', connectResponse.status);
-                console.error('Response headers:', Object.fromEntries([...connectResponse.headers]));
-                throw new Error(`Failed to connect to avatar service: ${connectResponse.status}. Server response: ${errorText}`);
-            }
-
-            console.log("Avatar connection successful, parsing response...");
-            // Get remote SDP and set it
-            const remoteSdpText = await connectResponse.text();
-            console.log("Remote SDP response (first 100 chars):", remoteSdpText.substring(0, 100) + "...");
-            
-            try {
-                const parsedRemoteSdp = JSON.parse(atob(remoteSdpText));
-                console.log("Remote SDP parsed successfully");
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(parsedRemoteSdp));
-                console.log('Avatar service connected successfully');
-                return true;
-            } catch (e) {
-                console.error('Failed to parse remote SDP:', e);
-                console.error('Raw remote SDP text:', remoteSdpText);
-                throw new Error(`Invalid remote SDP format: ${e.message}`);
-            }
-        } catch (fetchError) {
-            console.error('Fetch error details:', fetchError);
-            throw fetchError;
+        } else {
+            console.error(`Failed fetching ICE token: ${response.status} ${response.statusText}`);
         }
-    } catch (error) {
-        console.error('Error connecting to avatar service:', error);
-        document.getElementById('startAvatarButton').disabled = false;
-        sessionActive = false;
-        return false;
+    });
+}
+
+// Prepare peer connection for WebRTC (exactly as in Azure sample)
+function preparePeerConnection() {
+    // Create WebRTC peer connection
+    let peerConn = new RTCPeerConnection({
+        iceServers: [{
+            urls: [ iceServerUrl ],
+            username: iceServerUsername,
+            credential: iceServerCredential
+        }],
+        iceTransportPolicy: 'relay'
+    });
+
+    // Fetch WebRTC video stream and mount it to an HTML video element
+    peerConn.ontrack = function (event) {
+        if (event.track.kind === 'audio') {
+            let audioElement = document.createElement('audio');
+            audioElement.id = 'audioPlayer';
+            audioElement.srcObject = event.streams[0];
+            audioElement.autoplay = true;
+
+            audioElement.onplaying = () => {
+                console.log(`WebRTC ${event.track.kind} channel connected.`);
+            };
+
+            // Clean up existing audio element if there is any
+            let remoteVideoDiv = document.getElementById('remoteVideo');
+            for (var i = 0; i < remoteVideoDiv.childNodes.length; i++) {
+                if (remoteVideoDiv.childNodes[i].localName === event.track.kind) {
+                    remoteVideoDiv.removeChild(remoteVideoDiv.childNodes[i]);
+                }
+            }
+
+            // Append the new audio element
+            document.getElementById('remoteVideo').appendChild(audioElement);
+        }
+
+        if (event.track.kind === 'video') {
+            let videoElement = document.createElement('video');
+            videoElement.id = 'videoPlayer';
+            videoElement.srcObject = event.streams[0];
+            videoElement.autoplay = true;
+            videoElement.playsInline = true;
+            videoElement.style.width = '0.5px';
+
+            document.getElementById('remoteVideo').appendChild(videoElement);
+
+            // Continue speaking if there are unfinished sentences while reconnecting
+            if (isReconnecting) {
+                fetch('/api/chat/continueSpeaking', {
+                    method: 'POST',
+                    headers: {
+                        'ClientId': clientId
+                    },
+                    body: ''
+                });
+            }
+
+            videoElement.onplaying = () => {
+                // Clean up existing video element if there is any
+                let remoteVideoDiv = document.getElementById('remoteVideo');
+                for (var i = 0; i < remoteVideoDiv.childNodes.length; i++) {
+                    if (remoteVideoDiv.childNodes[i].localName === event.track.kind) {
+                        remoteVideoDiv.removeChild(remoteVideoDiv.childNodes[i]);
+                    }
+                }
+
+                // Append the new video element
+                videoElement.style.width = '960px';
+                document.getElementById('remoteVideo').appendChild(videoElement);
+
+                console.log(`WebRTC ${event.track.kind} channel connected.`);
+                document.getElementById('microphone').disabled = false;
+                document.getElementById('stopSession').disabled = false;
+                document.getElementById('remoteVideo').style.width = '960px';
+                document.getElementById('chatHistory').hidden = false;
+                
+                isReconnecting = false;
+                setTimeout(() => { sessionActive = true }, 5000); // Set session active after 5 seconds
+            };
+        }
+    };
+
+    // Make necessary update to the web page when the connection state changes
+    peerConn.oniceconnectionstatechange = e => {
+        console.log("WebRTC status: " + peerConn.iceConnectionState);
+        if (peerConn.iceConnectionState === 'disconnected') {
+            document.getElementById('remoteVideo').style.width = '0.1px';
+        }
+    };
+
+    // Offer to receive 1 audio, and 1 video track
+    peerConn.addTransceiver('video', { direction: 'sendrecv' });
+    peerConn.addTransceiver('audio', { direction: 'sendrecv' });
+
+    // Connect to avatar service when ICE candidates gathering is done
+    let iceGatheringDone = false;
+
+    peerConn.onicecandidate = e => {
+        if (!e.candidate && !iceGatheringDone) {
+            iceGatheringDone = true;
+            peerConnectionQueue.push(peerConn);
+            console.log("[" + (new Date()).toISOString() + "] ICE gathering done, new peer connection prepared.");
+            if (peerConnectionQueue.length > 1) {
+                peerConnectionQueue.shift();
+            }
+        }
+    };
+
+    peerConn.createOffer().then(sdp => {
+        peerConn.setLocalDescription(sdp).then(() => { 
+            setTimeout(() => {
+                if (!iceGatheringDone) {
+                    iceGatheringDone = true;
+                    peerConnectionQueue.push(peerConn);
+                    console.log("[" + (new Date()).toISOString() + "] ICE gathering done, new peer connection prepared.");
+                    if (peerConnectionQueue.length > 1) {
+                        peerConnectionQueue.shift();
+                    }
+                }
+            }, 10000) 
+        })
+    });
+}
+
+// Wait for peer connection and start session (exactly as in Azure sample)
+function waitForPeerConnectionAndStartSession() {
+    if (peerConnectionQueue.length > 0) {
+        let peerConn = peerConnectionQueue.shift();
+        connectToAvatarService(peerConn);
+        if (peerConnectionQueue.length === 0) {
+            preparePeerConnection();
+        }
+    } else {
+        console.log("Waiting for peer connection to be ready...");
+        setTimeout(waitForPeerConnectionAndStartSession, 1000);
     }
 }
 
-// Disconnect from avatar service
-async function disconnectAvatarService() {
-    try {
-        // Get CSRF token
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        
-        // Disconnect from avatar service
-        await fetch('/api/disconnectAvatar', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken
-            }
-        });
-        
-        // Close peer connection
-        if (peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
+// Connect to TTS Avatar Service (exactly as in Azure sample)
+function connectToAvatarService(peerConn) {
+    let localSdp = btoa(JSON.stringify(peerConn.localDescription));
+    
+    // Get avatar configuration from UI
+    const isCustom = document.getElementById('isCustomAvatar').checked;
+    let avatarCharacter, avatarStyle;
+    
+    if (isCustom) {
+        avatarCharacter = document.getElementById('customAvatarCharacter').value;
+        avatarStyle = document.getElementById('customAvatarStyle').value;
+    } else {
+        avatarCharacter = document.getElementById('avatarCharacter').value;
+        if (avatarCharacter === 'custom') {
+            avatarCharacter = document.getElementById('customAvatarCharacter').value;
         }
         
-        // Reset video element
-        const videoElement = document.getElementById('avatarVideo');
-        if (videoElement.srcObject) {
-            videoElement.srcObject.getTracks().forEach(track => track.stop());
-            videoElement.srcObject = null;
+        avatarStyle = document.getElementById('avatarStyle').value;
+        if (avatarStyle === 'custom') {
+            avatarStyle = document.getElementById('customAvatarStyle').value;
         }
-        
-        // Reset audio element
-        const audioElement = document.getElementById('avatarAudio');
-        if (audioElement && audioElement.srcObject) {
-            audioElement.srcObject.getTracks().forEach(track => track.stop());
-            audioElement.srcObject = null;
-        }
-        
-        sessionActive = false;
-        document.getElementById('startAvatarButton').disabled = false;
-        document.getElementById('stopAvatarButton').disabled = true;
-        
-        console.log('Avatar service disconnected successfully');
-        return true;
-        
-    } catch (error) {
-        console.error('Error disconnecting from avatar service:', error);
-        return false;
     }
+
+    const ttsVoice = document.getElementById('ttsVoice').value;
+
+    let headers = {
+        'ClientId': clientId,
+        'AvatarCharacter': avatarCharacter,
+        'AvatarStyle': avatarStyle,
+        'IsCustomAvatar': isCustom
+    };
+
+    if (isReconnecting) {
+        headers['Reconnect'] = true;
+    }
+
+    if (ttsVoice !== '') {
+        headers['TtsVoice'] = ttsVoice;
+    }
+
+    fetch('/api/connectAvatar', {
+        method: 'POST',
+        headers: headers,
+        body: localSdp
+    })
+    .then(response => {
+        if (response.ok) {
+            response.text().then(text => {
+                const remoteSdp = text;
+                peerConn.setRemoteDescription(new RTCSessionDescription(JSON.parse(atob(remoteSdp))));
+            });
+        } else {
+            document.getElementById('startAvatarButton').disabled = false;
+            throw new Error(`Failed connecting to the Avatar service: ${response.status} ${response.statusText}`);
+        }
+    });
 }
+
+// Connect avatar (matching Azure sample flow)
+function connectAvatarService() {
+    document.getElementById('startAvatarButton').disabled = true;
+    waitForPeerConnectionAndStartSession();
+    lastInteractionTime = new Date();
+    userClosedSession = false;
+}
+
+// Disconnect from avatar service (matching Azure sample)
+function disconnectAvatar(closeSpeechRecognizer = false) {
+    fetch('/api/disconnectAvatar', {
+        method: 'POST',
+        headers: {
+            'ClientId': clientId
+        },
+        body: ''
+    });
+
+    if (speechRecognizer !== undefined) {
+        speechRecognizer.stopContinuousRecognitionAsync();
+        if (closeSpeechRecognizer) {
+            speechRecognizer.close();
+        }
+    }
+
+    sessionActive = false;
+}
+
+// Initialize when page loads (matching Azure sample exactly)
+window.onload = () => {
+    clientId = document.getElementById('clientId').value;
+
+    fetchIceToken(); // Fetch ICE token and prepare peer connection on page load
+    setInterval(fetchIceToken, 60 * 1000); // Fetch ICE token and prepare peer connection every 1 minute
+};
+
+// Start session function (matching Azure sample)
+window.startSession = () => {
+    lastInteractionTime = new Date();
+    userClosedSession = false;
+    connectAvatarService();
+};
+
+// Stop session function (matching Azure sample)
+window.stopSession = () => {
+    lastInteractionTime = new Date();
+    document.getElementById('startAvatarButton').disabled = false;
+    document.getElementById('microphone').disabled = true;
+    document.getElementById('stopSession').disabled = true;
+    document.getElementById('chatHistory').hidden = true;
+
+    userClosedSession = true; // Indicating the session was closed by user on purpose, not due to network issue
+    disconnectAvatar(true);
+};
 
 // Document ready function
 document.addEventListener('DOMContentLoaded', function() {
@@ -854,40 +863,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize style options based on default character
     updateStyleOptions(avatarCharacter.value);
 
-    // Avatar buttons
-    document.getElementById('startAvatarButton').addEventListener('click', async function() {
-        this.disabled = true;
-        await connectAvatarService();
+    // Avatar buttons - use the function names expected by Azure sample
+    document.getElementById('startAvatarButton').addEventListener('click', function() {
+        window.startSession();
     });
     
-    document.getElementById('stopAvatarButton').addEventListener('click', async function() {
-        this.disabled = true;
-        await disconnectAvatarService();
-    });
-    
-    // Microphone buttons
-    document.getElementById('startMicButton').addEventListener('click', function() {
-        var avatar = document.getElementById('avatarVideo');
-        if (avatar && avatar.style.display !== 'none' && avatar.style.display !== '') {
-            startAvatarConversation();
-        } else {
-            startModelConversation();
-        }
-    });
-    
-    document.getElementById('stopMicButton').addEventListener('click', function() {
-        stopRecognition();
-    });
-    
-    // Chat form submission
-    document.querySelector('.message-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const messageInput = document.getElementById('messageInput');
-        const message = messageInput.value.trim();
-        if (message) {
-            handleChatMessage(message);
-            messageInput.value = '';
-        }
+    document.getElementById('stopAvatarButton').addEventListener('click', function() {
+        window.stopSession();
     });
     
     // Initialize with disabled mic button until speech SDK is ready
