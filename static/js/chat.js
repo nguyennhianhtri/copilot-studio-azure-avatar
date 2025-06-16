@@ -46,6 +46,10 @@ window.onload = () => {
     initializeClientId();
     // Initialize speech configuration when page loads
     initializeSpeechConfig();
+    
+    // Fetch ICE token and prepare peer connection on page load
+    fetchIceToken(); 
+    setInterval(fetchIceToken, 60 * 1000); // Fetch ICE token and prepare peer connection every 1 minute
 };
 
 // Initialize speech configuration
@@ -172,10 +176,10 @@ function stopRecognition() {
     }
 }
 
-// Speak text with avatar
+// Speak text with avatar using server-side API
 async function speakWithAvatar(text) {
-    if (!sessionActive || !avatarSynthesizer) {
-        console.warn('Avatar session not active or synthesizer not available. Cannot speak.');
+    if (!sessionActive) {
+        console.warn('Avatar session not active. Cannot speak.');
         return;
     }
 
@@ -189,68 +193,90 @@ async function speakWithAvatar(text) {
         isSpeaking = true;
         document.getElementById('stopAvatarButton').disabled = false;
 
-        // Unmute audio before speaking (required for autoplay)
-        const audioElement = document.getElementById('avatarAudio');
-        if (audioElement) {
-            audioElement.muted = false;
+        // Get CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        // Get voice configuration from UI
+        const isCustomVoice = document.getElementById('isCustomVoice').checked;
+        let voiceName;
+        
+        if (isCustomVoice) {
+            voiceName = document.getElementById('customTtsVoice').value || 'en-US-JennyNeural';
+        } else {
+            voiceName = document.getElementById('ttsVoice').value || 'en-US-JennyNeural';
         }
 
-        // Use Speech SDK avatar synthesizer to speak
-        const result = await new Promise((resolve, reject) => {
-            avatarSynthesizer.speakTextAsync(text).then(
-                (result) => {
-                    if (result.reason === window.SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
-                        console.log("Speech and avatar synthesized to video stream.");
-                        resolve(result);
-                    } else {
-                        console.log("Unable to speak. Result ID: " + result.resultId);
-                        if (result.reason === window.SpeechSDK.ResultReason.Canceled) {
-                            let cancellationDetails = window.SpeechSDK.CancellationDetails.fromResult(result);
-                            console.log("Cancellation reason:", cancellationDetails.reason);
-                            if (cancellationDetails.reason === window.SpeechSDK.CancellationReason.Error) {
-                                console.log("Error details:", cancellationDetails.errorDetails);
-                                reject(new Error(cancellationDetails.errorDetails));
-                            }
-                        }
-                        reject(new Error(`Speech synthesis failed: ${result.reason}`));
-                    }
-                }
-            ).catch((error) => {
-                console.error("Speech synthesis error:", error);
-                reject(error);
-            });
+        // Convert text to SSML format with selected voice
+        const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+            <voice name="${voiceName}">${text}</voice>
+        </speak>`;
+
+        // Send speak request to server with SSML as raw text data
+        const response = await fetch('/api/speak', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/ssml+xml',
+                'X-CSRFToken': csrfToken,
+                'ClientId': clientId
+            },
+            body: ssml  // Send SSML as raw text, not JSON
         });
 
-        isSpeaking = false;
-        document.getElementById('stopAvatarButton').disabled = true;
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        }
+
+        const result = await response.text();
+        console.log("Avatar speech initiated successfully:", result);
+
+        // Note: The actual speaking happens on the server and is streamed via WebRTC
+        // We don't get immediate feedback when speaking completes, so we'll set a timeout
+        // In a production app, you might want to add a callback mechanism
+        setTimeout(() => {
+            isSpeaking = false;
+            document.getElementById('stopAvatarButton').disabled = true;
+        }, text.length * 50); // Rough estimate: 50ms per character
 
     } catch (error) {
         console.error('Error in speakWithAvatar:', error);
         isSpeaking = false;
         document.getElementById('stopAvatarButton').disabled = true;
+        throw error;
     }
 }
 
 // Stop the avatar from speaking
-function stopAvatarSpeaking() {
-    if (!isSpeaking || !avatarSynthesizer) return;
+// Stop the avatar from speaking using server-side API
+async function stopAvatarSpeaking() {
+    if (!isSpeaking) return;
     
     try {
         console.log('Stopping avatar speaking...');
         
-        // Use Speech SDK to stop speaking
-        avatarSynthesizer.stopSpeakingAsync().then(() => {
+        // Get CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        
+        // Send stop speaking request to server
+        const response = await fetch('/api/stopSpeaking', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+                'ClientId': clientId
+            }
+        });
+
+        if (response.ok) {
             console.log('Successfully stopped avatar speaking');
             isSpeaking = false;
             document.getElementById('stopAvatarButton').disabled = true;
-        }).catch((error) => {
-            console.error('Error stopping avatar speaking:', error);
-            isSpeaking = false;
-            document.getElementById('stopAvatarButton').disabled = true;
-        });
+        } else {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         
     } catch (error) {
-        console.error('Error in stopAvatarSpeaking:', error);
+        console.error('Error stopping avatar speaking:', error);
         isSpeaking = false;
         document.getElementById('stopAvatarButton').disabled = true;
     }
@@ -781,13 +807,6 @@ function disconnectAvatar(closeSpeechRecognizer = false) {
 }
 
 // Initialize when page loads (matching Azure sample exactly)
-window.onload = () => {
-    clientId = document.getElementById('clientId').value;
-
-    fetchIceToken(); // Fetch ICE token and prepare peer connection on page load
-    setInterval(fetchIceToken, 60 * 1000); // Fetch ICE token and prepare peer connection every 1 minute
-};
-
 // Start session function (matching Azure sample)
 window.startSession = () => {
     lastInteractionTime = new Date();
@@ -880,3 +899,4 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('startMicButton').disabled = false;
     });
 });
+
