@@ -178,6 +178,8 @@ function stopRecognition() {
 
 // Speak text with avatar using server-side API
 async function speakWithAvatar(text) {
+    debugButtonState('speakWithAvatar start');
+    
     if (!sessionActive) {
         console.warn('Avatar session not active. Cannot speak.');
         return;
@@ -190,8 +192,16 @@ async function speakWithAvatar(text) {
 
     try {
         console.log('Avatar speaking:', text);
+        
+        // Always reset speaking state when starting new speech
         isSpeaking = true;
-        document.getElementById('stopAvatarButton').disabled = false;
+        
+        // Ensure stop button is enabled when speaking starts (it should already be enabled if session is active)
+        const stopButton = document.getElementById('stopAvatarButton');
+        if (stopButton && stopButton.disabled) {
+            stopButton.disabled = false;
+            console.log('Stop avatar button enabled for speaking');
+        }
 
         // Get CSRF token
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -232,16 +242,22 @@ async function speakWithAvatar(text) {
 
         // Note: The actual speaking happens on the server and is streamed via WebRTC
         // We don't get immediate feedback when speaking completes, so we'll set a timeout
-        // In a production app, you might want to add a callback mechanism
+        // Give minimum 3 seconds for user to potentially stop, then estimate based on text length
+        const minSpeakTime = 3000; // 3 seconds minimum
+        const estimatedSpeakTime = Math.max(minSpeakTime, text.length * 80); // 80ms per character, minimum 3 seconds
+        
         setTimeout(() => {
-            isSpeaking = false;
-            document.getElementById('stopAvatarButton').disabled = true;
-        }, text.length * 50); // Rough estimate: 50ms per character
+            if (isSpeaking) { // Only reset speaking flag, keep button enabled for session
+                console.log('Avatar speaking timeout - resetting isSpeaking flag');
+                isSpeaking = false;
+                // Don't disable the button here - it should stay enabled for the session
+            }
+        }, estimatedSpeakTime);
 
     } catch (error) {
         console.error('Error in speakWithAvatar:', error);
         isSpeaking = false;
-        document.getElementById('stopAvatarButton').disabled = true;
+        // Don't disable the button here - session should remain active
         throw error;
     }
 }
@@ -270,7 +286,7 @@ async function stopAvatarSpeaking() {
         if (response.ok) {
             console.log('Successfully stopped avatar speaking');
             isSpeaking = false;
-            document.getElementById('stopAvatarButton').disabled = true;
+            // Don't disable the button - session should remain active for new speech
         } else {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -278,7 +294,7 @@ async function stopAvatarSpeaking() {
     } catch (error) {
         console.error('Error stopping avatar speaking:', error);
         isSpeaking = false;
-        document.getElementById('stopAvatarButton').disabled = true;
+        // Don't disable the button - session should remain active
     }
 }
 
@@ -288,7 +304,9 @@ async function handleChatMessage(message) {
         
         // Stop speaking if already speaking
         if (isSpeaking) {
-            stopAvatarSpeaking();
+            debugButtonState('before stopAvatarSpeaking');
+            await stopAvatarSpeaking();
+            debugButtonState('after stopAvatarSpeaking');
         }
 
         // Display user message on the right side
@@ -374,7 +392,10 @@ async function handleChatMessage(message) {
 
         // Speak the response with avatar
         if (sessionActive) {
-            speakWithAvatar(mainResponse);
+            debugButtonState('before speakWithAvatar call');
+            console.log('Starting avatar speech, sessionActive:', sessionActive, 'isSpeaking:', isSpeaking);
+            await speakWithAvatar(mainResponse);
+            debugButtonState('after speakWithAvatar call');
         }
 
     } catch (error) {
@@ -557,6 +578,12 @@ window.microphone = () => {
         });
 };
 
+// Debug function to check button state
+function debugButtonState(context) {
+    const stopButton = document.getElementById('stopAvatarButton');
+    console.log(`[${context}] isSpeaking: ${isSpeaking}, stopButton.disabled: ${stopButton ? stopButton.disabled : 'button not found'}`);
+}
+
 // Global variables for peer connection management (matching Azure sample)
 let iceServerUrl, iceServerUsername, iceServerCredential;
 let peerConnectionQueue = [];
@@ -648,18 +675,32 @@ function preparePeerConnection() {
                     }
                 }
 
-                // Append the new video element
-                videoElement.style.width = '960px';
+                // Append the new video element with proper styling
+                videoElement.style.width = '100%';
+                videoElement.style.height = '100%';
+                videoElement.style.objectFit = 'cover';
+                videoElement.style.position = 'absolute';
+                videoElement.style.top = '0';
+                videoElement.style.left = '0';
                 document.getElementById('remoteVideo').appendChild(videoElement);
 
                 console.log(`WebRTC ${event.track.kind} channel connected.`);
                 document.getElementById('microphone').disabled = false;
                 document.getElementById('stopSession').disabled = false;
-                document.getElementById('remoteVideo').style.width = '960px';
+                document.getElementById('remoteVideo').style.width = '100%';
+                document.getElementById('remoteVideo').style.height = '100%';
                 document.getElementById('chatHistory').hidden = false;
                 
                 isReconnecting = false;
-                setTimeout(() => { sessionActive = true }, 5000); // Set session active after 5 seconds
+                setTimeout(() => { 
+                    sessionActive = true;
+                    // Enable stop avatar button when session becomes active
+                    const stopAvatarButton = document.getElementById('stopAvatarButton');
+                    if (stopAvatarButton) {
+                        stopAvatarButton.disabled = false;
+                        console.log('Stop avatar button enabled - session active');
+                    }
+                }, 5000); // Set session active after 5 seconds
             };
         }
     };
@@ -804,6 +845,13 @@ function disconnectAvatar(closeSpeechRecognizer = false) {
     }
 
     sessionActive = false;
+    
+    // Disable stop avatar button when session ends
+    const stopAvatarButton = document.getElementById('stopAvatarButton');
+    if (stopAvatarButton) {
+        stopAvatarButton.disabled = true;
+        console.log('Stop avatar button disabled - session ended');
+    }
 }
 
 // Initialize when page loads (matching Azure sample exactly)
