@@ -14,7 +14,7 @@ import traceback
 from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -287,65 +287,64 @@ def get_bot_response(conversation_id, token, user_message_id):
                     None
                 )
                 
-                # If still no response, wait longer for plan execution to complete
+                # If still no response, implement proper polling with longer timeout
                 if not bot_response:
-                    logger.debug("No immediate bot response found, waiting for plan execution...")
-                    time.sleep(5)  # Wait longer for new plan-based responses
+                    logger.debug("No immediate bot response found, waiting for bot to process...")
                     
-                    # Try again with fresh data
-                    response = requests.get(url, headers=headers)
-                    if response.status_code == 200:
-                        data = response.json()
-                        activities = data.get('activities', [])
-                        logger.debug(f"After waiting, found {len(activities)} total activities")
+                    # Poll for response with longer timeout (up to 60 seconds)
+                    max_wait_time = 60  # Maximum wait time in seconds
+                    poll_interval = 2   # Check every 2 seconds
+                    elapsed_time = 0
+                    
+                    while elapsed_time < max_wait_time:
+                        time.sleep(poll_interval)
+                        elapsed_time += poll_interval
                         
-                        # Look for bot responses again
-                        bot_response = next(
-                            (activity for activity in activities 
-                             if activity.get('replyToId') == user_message_id and
-                             activity.get('from', {}).get('role') == 'bot' and
-                             activity.get('type') == 'message' and
-                             activity.get('text')),
-                            None
-                        )
+                        logger.debug(f"Polling for bot response... ({elapsed_time}s elapsed)")
+                        
+                        # Get fresh activities
+                        response = requests.get(url, headers=headers)
+                        if response.status_code == 200:
+                            data = response.json()
+                            activities = data.get('activities', [])
+                            
+                            # Look for bot response again
+                            bot_response = next(
+                                (activity for activity in activities 
+                                 if activity.get('replyToId') == user_message_id and
+                                 activity.get('from', {}).get('role') == 'bot' and
+                                 activity.get('type') == 'message' and
+                                 activity.get('text')),
+                                None
+                            )
+                            
+                            if bot_response:
+                                logger.debug(f"Found bot response after {elapsed_time}s")
+                                break
+                        else:
+                            logger.warning(f"Failed to poll activities: {response.status_code}")
+                    
+                    if not bot_response:
+                        logger.warning(f"No bot response found after {max_wait_time}s timeout")
+                        return {
+                            'text': 'I apologize, but I am taking longer than expected to process your request. Please try again.',
+                            'watermark': str(len(activities) if 'activities' in locals() else session.get('watermark', '0'))
+                        }
             
+            # Process the bot response if found
             if bot_response:
                 logger.debug(f"Found bot response: {bot_response}")
                 response_text = bot_response.get('text', 'No response')
                 if not response_text or response_text.strip() == '':
-                    response_text = 'I received your message but have no text response.'
+                    response_text = 'I received your message but the response was empty.'
                 return {
                     'text': response_text,
                     'watermark': str(len(activities))
                 }
             else:
-                logger.debug("No bot response found for this message")
-                # If still no response found, wait a bit and try one final time
-                time.sleep(3)
-                response = requests.get(url, headers=headers)
-                if response.status_code == 200:
-                    data = response.json()
-                    activities = data.get('activities', [])
-                    logger.debug(f"Final attempt: found {len(activities)} total activities")
-                    
-                    bot_response = next(
-                        (activity for activity in activities 
-                         if activity.get('replyToId') == user_message_id and
-                         activity.get('from', {}).get('role') == 'bot' and
-                         activity.get('type') == 'message'),
-                        None
-                    )
-                    if bot_response:
-                        response_text = bot_response.get('text', 'Response received without text content')
-                        return {
-                            'text': response_text,
-                            'watermark': str(len(activities))
-                        }
-                        
-                # As a last resort, return a default response indicating the bot processed the message
-                logger.warning("Bot activity detected but no text response found")
+                logger.warning("No bot response found after all attempts")
                 return {
-                    'text': 'I received your message and am processing it, but no text response was generated.',
+                    'text': 'I apologize, but I was unable to generate a response to your message. Please try again.',
                     'watermark': str(len(activities) if 'activities' in locals() else session.get('watermark', '0'))
                 }
                 
